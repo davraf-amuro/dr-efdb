@@ -1,3 +1,7 @@
+---
+applyTo: "**"
+---
+
 # DbProvider Template - Infrastructure Provider Generator
 
 Genera provider EF Core per SQL Server seguendo i pattern del progetto D106.
@@ -264,4 +268,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.6 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-02-09 10:00
+*Template v1.7 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-03-17 21:28
