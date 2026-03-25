@@ -256,6 +256,29 @@ git reset --hard <hash>       # Torna a commit specifico
 
 ---
 
+## 🎯 Criteri di successo (verificare prima di iniziare)
+
+Prima di iniziare, chiediti:
+- [ ] So esattamente quali file creerò/modificherò?
+- [ ] Ho verificato che il provider non esista già in `Infrastructure\{NOME_PROVIDER}\`?
+- [ ] Ho letto le istruzioni modulari pertinenti?
+
+Se una risposta è NO → chiedi chiarimenti all'utente prima di procedere.
+
+---
+
+## 🔨 Verifica compilazione (obbligatoria)
+
+Dopo aver generato tutti i file, verifica:
+- Tutti i `using` necessari sono presenti in ogni file?
+- I namespace sono coerenti tra Entity, Filter, DTO, Provider e Extensions?
+- I metodi chiamati negli endpoint esistono nel provider con la firma corretta?
+- Le Expression `To{Entity}Result` hanno `{ get; }` e non `=>`?
+
+Se non puoi verificare un punto: dichiaralo esplicitamente all'utente.
+
+---
+
 ## 🧪 Testing (Opzionale)
 
 **In-Memory DB**:
@@ -268,4 +291,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.7 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-03-17 21:28
+*Template v1.8 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-03-25 — claude-sonnet-4-6
