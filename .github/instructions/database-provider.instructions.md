@@ -13,9 +13,9 @@ Genera provider EF Core per SQL Server seguendo i pattern del progetto D106.
 | **DbContext** | Primary constructor: `(DbContextOptions<T>, ILoggerFactory)` | NoTracking, SensitiveDataLogging |
 | **Provider** | Primary constructor: `(TDbContext, ILogger<T>)` | Metodi async con `CancellationToken` |
 | **Entity** | `[Table]` + `[Column]` su ogni proprietà | Fluent API per chiavi |
-| **Filter** | Props nullable (`DateTime?`, `int?`) | Pattern: `From{X}`, `To{X}`, `{X}Contains` |
-| **DTO** | `[JsonPropertyName]` camelCase | Namespace: `{ROOT_NAMESPACE}.Dto` |
-| **Projection** | `Expression<Func<T,R>>` con `{ get; }` | Classe: `{Entity}Extensions`, Property: `To{Entity}Result` |
+| **Filter** | Props tutte nullable + `ToExpression()` | Pattern: `{X}` (string→Contains, numerici→uguaglianza), `{X}From`/`{X}To` (DateTime) |
+| **DTO** | `record` posizionale con `static Projection` | Namespace: `{ROOT_NAMESPACE}.Dto` |
+| **Projection** | `static Expression<Func<TEntity,TDto>> Projection` nel record DTO | New-initializer EF-traducibile — niente classi Extensions |
 | **DI Extension** | `Add{Provider}Provider(services, config)` | Registra DbContext + Provider come Scoped |
 
 ## ⚠️ Workflow Obbligatorio
@@ -45,8 +45,8 @@ Infrastructure/{PROVIDER}/
 └── Filters/{Entity}Filter.cs
 
 Dto/
-├── {Entity}Result.cs
-└── {Entity}Extensions.cs
+├── {Entity}Dto.cs          ← record completo con static Projection
+└── {Entity}SummaryDto.cs   ← record ridotto con static Projection (SELECT ottimizzata)
 ```
 
 **Prerequisiti NuGet**: Verifica `Microsoft.EntityFrameworkCore.SqlServer` (NO upgrade se presente)
@@ -86,20 +86,36 @@ public class {PROVIDER}Provider(
     {PROVIDER}DbContext context, 
     ILogger<{PROVIDER}Provider> logger)
 {
+    /// <summary>Reads {Entity} rows matching the filter, projected with the given EF-translatable selector.</summary>
     public async Task<List<TResult>> Get{Entity}Async<TResult>(
         {Entity}Filter filter,
         Expression<Func<{Entity}, TResult>> selector,
         CancellationToken cancellationToken)
     {
-        var query = context.{Entity}.AsNoTracking();
-        
-        if (filter.From{Field}.HasValue)
-            query = query.Where(e => e.{Field} >= filter.From{Field}.Value);
-        
-        return await query.Select(selector).ToListAsync(cancellationToken);
+        logger.LogInformation("Querying {Entity} with filter {@Filter}", filter);
+
+        // Leggo da DB: WHERE con i soli filtri valorizzati, SELECT con le sole colonne del DTO
+        return await context.{Entity}.AsNoTracking()
+            .Where(filter.ToExpression())
+            .Select(selector)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Updates an existing {Entity}. False if the key does not exist.</summary>
+    public async Task<bool> Update{Entity}Async({Entity} entity, CancellationToken cancellationToken)
+    {
+        // AsTracking: il context è NoTracking di default, senza tracking SaveChanges non rileva le modifiche
+        var existing = await context.{Entity}.AsTracking()
+            .FirstOrDefaultAsync(e => e.Id == entity.Id, cancellationToken);
+        if (existing is null) return false;
+
+        // ... copia campi ...
+        await context.SaveChangesAsync(cancellationToken);
+        return true;
     }
 }
 ```
+Stessa struttura per `Create{Entity}Async` (Add + SaveChanges, Id da IDENTITY) e `Delete{Entity}Async` (`AsTracking` + Remove + SaveChanges).
 
 ### 3️⃣ Entity
 ```csharp
@@ -111,34 +127,45 @@ public class {Entity}
 }
 ```
 
-### 4️⃣ Filter
+### 4️⃣ Filter con ToExpression
 ```csharp
+/// <summary>Optional filters for querying {Entity}. All fields nullable — none required.</summary>
 public class {Entity}Filter
 {
-    public DateTime? From{Field} { get; set; } // DateTime → From/To
-    public DateTime? To{Field} { get; set; }
-    public string? {Field}Contains { get; set; } // string → Contains
-    public int? {Field} { get; set; } // numeric → stesso nome
+    public int? Id { get; set; }                  // numerici → stesso nome, uguaglianza
+    public string? {Field} { get; set; }          // string → stesso nome, match Contains
+    public DateTime? {Field}From { get; set; }    // DateTime → coppia {X}From / {X}To
+    public DateTime? {Field}To { get; set; }
+
+    /// <summary>Builds the EF-translatable WHERE expression from the populated fields.</summary>
+    public Expression<Func<{Entity}, bool>> ToExpression() =>
+        e => (Id == null || e.Id == Id)
+          && ({Field} == null || e.{Field}.Contains({Field}))
+          && ({Field}From == null || e.{Field} >= {Field}From)
+          && ({Field}To == null || e.{Field} <= {Field}To);
 }
 ```
+Pattern `(campo == null || ...)`: EF parametrizza e ignora i predicati con filtro null — il WHERE contiene solo i filtri valorizzati. Nessun `if` di composizione query nel provider.
 
-### 5️⃣ DTO Result + Projection Extension
+### 5️⃣ DTO record con Projection
 ```csharp
-// {Entity}Result.cs
-public class {Entity}Result
+// Dto/{Entity}Dto.cs — record completo
+/// <summary>Response DTO for a {Entity} row, with EF-translatable projection.</summary>
+public record {Entity}Dto(int Id, string {Field}, DateTime {Field2})
 {
-    [JsonPropertyName("fieldName")] // camelCase
-    public string FieldName { get; set; }
+    /// <summary>EF-translatable projection (new-initializer, primitive member access only).</summary>
+    public static Expression<Func<{Entity}, {Entity}Dto>> Projection =>
+        e => new(e.Id, e.{Field}, e.{Field2});
 }
 
-// {Entity}Extensions.cs
-public static class {Entity}Extensions
+// Dto/{Entity}SummaryDto.cs — record ridotto: SELECT con sole colonne necessarie
+public record {Entity}SummaryDto(int Id, string {Field})
 {
-    public static Expression<Func<{Entity}, {Entity}Result>> To{Entity}Result { get; } = 
-        source => new {Entity}Result { FieldName = source.FieldName };
+    public static Expression<Func<{Entity}, {Entity}SummaryDto>> Projection =>
+        e => new(e.Id, e.{Field});
 }
 ```
-**⚠️ IMPORTANTE**: Usa `{ get; }` NON `=>` per performance
+**⚠️ IMPORTANTE**: la Projection vive nel record DTO — niente classi `{Entity}Extensions` separate. Solo new-initializer con member access primitivi: metodi extension (`e.ToDto()`) non sono EF-traducibili e causano valutazione client-side.
 
 ### 6️⃣ DI Extension
 ```csharp
@@ -168,12 +195,15 @@ using {ROOT_NAMESPACE}.Infrastructure.{PROVIDER};
 builder.Services.Add{PROVIDER}Provider(builder.Configuration);
 ```
 
-### 8️⃣ Uso negli Endpoint
+### 8️⃣ Uso negli Endpoint (tramite Service)
+Gli handler non chiamano il provider direttamente: iniettano il Service (`Services/<Entity>Service.cs`, vedi `minimal-api-architecture.instructions.md` regola 12). È il Service a passare la Projection:
 ```csharp
-var result = await provider.Get{Entity}Async(
-    filter, 
-    {Entity}Extensions.To{Entity}Result, // ← Expression statica
-    cancellationToken);
+// Services/<Entity>Service.cs
+public Task<List<{Entity}Dto>> GetAllAsync({Entity}Filter filter, CancellationToken cancellationToken) =>
+    provider.Get{Entity}Async(filter, {Entity}Dto.Projection, cancellationToken);
+
+public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, CancellationToken cancellationToken) =>
+    provider.Get{Entity}Async(filter, {Entity}SummaryDto.Projection, cancellationToken);
 ```
 
 ---
@@ -184,23 +214,22 @@ var result = await provider.Get{Entity}Async(
 |--------|-----------|
 | **Primary Constructor** | Sempre per DbContext e Provider |
 | **CancellationToken** | Ultimo parametro in TUTTI i metodi che materializzano (ToListAsync, etc) |
-| **AsNoTracking()** | Su tutte le query read-only |
-| **Logging** | `logger.LogInformation` per ogni filtro applicato |
+| **AsNoTracking()** | Default dal DbContext; letture no-tracking, `AsTracking()` esplicito su Update/Delete |
+| **Logging** | `logger.LogInformation` strutturato con i valori del filtro |
 | **Column Attribute** | Su OGNI proprietà Entity |
-| **Filter per Entity** | Ogni Entity DEVE avere il suo Filter (anche vuoto) |
-| **Projection Extension** | Ogni Entity DEVE avere Extension + Result DTO |
-| **Expression Pattern** | `{ get; }` NON `=>` |
+| **Filter per Entity** | Ogni Entity DEVE avere il suo Filter con `ToExpression()` (anche vuoto) |
+| **DTO per Entity** | Almeno `{Entity}Dto` completo + `{Entity}SummaryDto` ridotto, ognuno con `static Projection` |
+| **Commenti** | `///` su ogni metodo provider/service + inline su operazioni DB (code-organization Regola 6) |
 | **Git Commit** | Solo locale, NO push automatico |
 
 ---
 
 ## 📖 Riferimento: Provider Antifrode Esistente
 
-**Invece di duplicare codice, CONSULTA i file esistenti nel progetto**:
-- `src/D106.Api/Infrastructure/Antifrode/` - Implementazione completa
-- Entities: `Log106.cs`, `CS2K.cs`
-- Filters: `Log106Filter.cs`, `CS2KFilter.cs`
-- DTOs: `Dto/Log106Extensions.cs`, `Dto/CS2KExtensions.cs`
+**Invece di duplicare codice, CONSULTA l'implementazione di riferimento ModelKits** (progetto test-guideline):
+- `src/test-guideline.api/Infrastructure/ModelKits/` — DbContext, Provider CRUD completo, `Entities/ModelKit.cs`, `Filters/ModelKitFilter.cs` con `ToExpression()`
+- `src/test-guideline.api/Dto/ModelKitDto.cs` — record con `static Projection`
+- `src/test-guideline.api/Services/ModelKitService.cs` — Service che sceglie la Projection e mappa request→entity
 
 **Struttura identica da replicare** per nuovo provider.
 
@@ -243,16 +272,17 @@ git reset --hard <hash>       # Torna a commit specifico
 
 ## ✅ Checklist Post-Generazione
 
-- [ ] Per ogni Entity: Filter + DTO Result + DTO Extensions esistono
-- [ ] Filter: DateTime → `From{X}`/`To{X}`, string → `{X}Contains`
-- [ ] Projection Extension: `{ get; }` NON `=>`, nome `To{Entity}Result`
-- [ ] Provider: metodo `Get{Entity}Async<TResult>` con `CancellationToken`
+- [ ] Per ogni Entity: Filter con `ToExpression()` + `{Entity}Dto` e `{Entity}SummaryDto` con `static Projection`
+- [ ] Filter: tutti i campi nullable — string → `{X}` (Contains), numerici → `{X}`, DateTime → `{X}From`/`{X}To`
+- [ ] Provider GET: `Where(filter.ToExpression()).Select(selector)` — nessun `if` di composizione query
+- [ ] Provider: metodo `Get{Entity}Async<TResult>` con `CancellationToken`; Update/Delete con `AsTracking()`
 - [ ] `[Column]` attributo su OGNI proprietà Entity
-- [ ] Logging su ogni filtro applicato
+- [ ] Logging strutturato del filtro
+- [ ] `///` su ogni metodo + commento inline su ogni operazione DB
 - [ ] DI Extension creato: `Add{PROVIDER}Provider`
-- [ ] Registrato in `Program.cs` con using
+- [ ] Registrato in `Program.cs` con using; Service registrato accanto al provider
 - [ ] Connection string in `appsettings.Development.json`
-- [ ] Endpoint usa Expression statica: `{Entity}Extensions.To{Entity}Result`
+- [ ] Handler usano il Service; il Service passa `{Entity}Dto.Projection` al provider
 
 ---
 
@@ -273,7 +303,7 @@ Dopo aver generato tutti i file, verifica:
 - Tutti i `using` necessari sono presenti in ogni file?
 - I namespace sono coerenti tra Entity, Filter, DTO, Provider e Extensions?
 - I metodi chiamati negli endpoint esistono nel provider con la firma corretta?
-- Le Expression `To{Entity}Result` hanno `{ get; }` e non `=>`?
+- Le `Projection` dei DTO usano solo new-initializer con member access primitivi?
 
 Se non puoi verificare un punto: dichiaralo esplicitamente all'utente.
 
@@ -291,4 +321,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.8 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-03-25 — claude-sonnet-4-6
+*Template v1.9 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-06-10 — claude-fable-5
