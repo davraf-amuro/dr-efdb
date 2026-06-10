@@ -224,7 +224,7 @@ public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, C
 
 ---
 
-## 📖 Riferimento: Provider Antifrode Esistente
+## 📖 Riferimento: Implementazione ModelKits
 
 **Invece di duplicare codice, CONSULTA l'implementazione di riferimento ModelKits** (progetto test-guideline):
 - `src/test-guideline.api/Infrastructure/ModelKits/` — DbContext, Provider CRUD completo, `Entities/ModelKit.cs`, `Filters/ModelKitFilter.cs` con `ToExpression()`
@@ -247,7 +247,7 @@ git commit -m "feat: add {provider} provider infrastructure"
 
 # Rollback se necessario
 git status                    # Vedi modifiche
-git checkout -- <file>        # Ripristina file singolo
+git restore <file>            # Ripristina file singolo (git v2.23+)
 git reset --hard HEAD         # Annulla TUTTE le modifiche non committate
 git log --oneline             # Storia commit
 git reset --hard <hash>       # Torna a commit specifico
