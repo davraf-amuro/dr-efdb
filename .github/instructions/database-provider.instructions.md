@@ -117,6 +117,8 @@ public class {PROVIDER}Provider(
 ```
 Stessa struttura per `Create{Entity}Async` (Add + SaveChanges, Id da IDENTITY) e `Delete{Entity}Async` (`AsTracking` + Remove + SaveChanges).
 
+> **Soft delete non è coperto.** Se richiesto: aggiungi predicato `IsDeleted == false` in `ToExpression()` e fai sì che `DeleteAsync` imposti il flag invece di rimuovere la riga.
+
 ### 3️⃣ Entity
 ```csharp
 [Table("{TABLE_NAME}")]
