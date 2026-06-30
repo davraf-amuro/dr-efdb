@@ -22,7 +22,9 @@ in stato degradato, espone lo stato al frontend e permette il retry senza riavvi
 5. Il retry è esposto via `POST /api/v{version}/status/retry-database` — 200 se pronto, 503 `ProblemDetails` se ancora down
 6. Gli endpoint status/retry sono **`AllowAnonymous`** — l'autenticazione dipende dal DB, devono restare raggiungibili a DB down
 7. Errori DB **a runtime** gestiti da un `IExceptionHandler` dedicato che risponde **503 `ProblemDetails`**
+   - Anche ogni `BackgroundService`/`IHostedService` che tocca il DB cattura le eccezioni e **non rilancia** (il default `BackgroundServiceExceptionBehavior.StopHost` fermerebbe l'intera app): logga e riprova al ciclo successivo, rilancia solo `OperationCanceledException` in shutdown
 8. La connessione si verifica con `IDbContextFactory<T>` + `CanConnectAsync` — mai aprire connessioni a mano
+9. Il probe live di `GET status` esegue **anche una lettura reale** su una tabella (es. `Roles.AnyAsync`), non solo `CanConnectAsync`: un DB che accetta connessioni ma con file dati illeggibile (es. SQL error 823) deve risultare **non pronto**
 
 ## Componenti (responsabilità)
 
@@ -87,16 +89,26 @@ public class DatabaseStartupService(
         }
     }
 
-    /// <summary>Probe live di sola connessione (per GET status).</summary>
+    /// <summary>Probe live (per GET status): connessione + lettura reale di una tabella.</summary>
     public async Task<bool> CheckConnectionAsync(CancellationToken ct)
     {
         LastCheckedUtc = DateTimeOffset.UtcNow;
         try
         {
             await using var db = await contextFactory.CreateDbContextAsync(ct);
-            IsDatabaseReady = await db.Database.CanConnectAsync(ct);
-            LastError = IsDatabaseReady ? null : "Il database non è raggiungibile.";
-            return IsDatabaseReady;
+            if (!await db.Database.CanConnectAsync(ct))
+            {
+                IsDatabaseReady = false;
+                LastError = "Il database non è raggiungibile.";
+                return false;
+            }
+
+            // lettura reale: CanConnect (SELECT 1) non basta — un DB connettibile ma con
+            // file dati illeggibile (SQL error 823) deve risultare non pronto
+            await db.Roles.AsNoTracking().AnyAsync(ct);
+            IsDatabaseReady = true;
+            LastError = null;
+            return true;
         }
         catch (Exception ex)
         {
@@ -209,6 +221,8 @@ if (!await dbStartup.TryInitializeAsync(CancellationToken.None))
 - App crasha all'avvio con DB down → seed non incapsulato nel servizio no-throw
 - `Cannot consume scoped service from singleton` → usare `IServiceScopeFactory` per i componenti scoped (seed)
 - `GET status` ritorna 503/500 → l'endpoint deve sempre rispondere 200 con `databaseReady=false`
+- `GET status` dice `databaseReady=true` ma le query falliscono → probe basato solo su `CanConnectAsync` (SELECT 1): aggiungi una lettura reale (DB connettibile ma file dati corrotto, error 823)
+- Background service (`IHostedService`) che usa il DB ferma l'host a DB down → wrappa l'operazione in try/catch no-throw (default `BackgroundServiceExceptionBehavior.StopHost`), rilancia solo su `OperationCanceledException` in shutdown
 - Retry inutilizzabile a DB down → endpoint non `AllowAnonymous`
 - 500 invece di 503 a runtime → `DatabaseExceptionHandler` non registrato o `UseExceptionHandler()` mancante
 
@@ -222,4 +236,4 @@ if (!await dbStartup.TryInitializeAsync(CancellationToken.None))
 - [ ] `DatabaseExceptionHandler` registrato + `UseExceptionHandler()` attivo
 - [ ] Avvio con DB down: app parte, log `Warning` strutturato presente
 
-*Template v1.0 - Database Startup Resilience - 2026-06-30 — claude-opus-4-8*
+*Template v1.1 - Database Startup Resilience - 2026-06-30 — claude-opus-4-8*
