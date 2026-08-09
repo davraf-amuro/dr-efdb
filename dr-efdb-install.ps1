@@ -8,7 +8,7 @@
         irm https://raw.githubusercontent.com/davraf-amuro/dr-efdb/main/dr-efdb-install.ps1 | iex
 
     Installazione (repo Private, con gh autenticato):
-        & ([scriptblock]::Create((gh api repos/davraf-amuro/dr-efdb/contents/dr-efdb-install.ps1 -H "Accept: application/vnd.github.raw")))
+        & ([scriptblock]::Create((gh api repos/davraf-amuro/dr-efdb/contents/dr-efdb-install.ps1 -H "Accept: application/vnd.github.raw" | Out-String)))
 
     Aggiornamento (sovrascrive i file gia presenti):
         & ([scriptblock]::Create((irm https://raw.githubusercontent.com/davraf-amuro/dr-efdb/main/dr-efdb-install.ps1))) -Update
