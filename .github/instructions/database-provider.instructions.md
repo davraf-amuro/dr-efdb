@@ -198,7 +198,11 @@ builder.Services.Add{PROVIDER}Provider(builder.Configuration);
 ```
 
 ### 8️⃣ Uso negli Endpoint (tramite Service)
-Gli handler non chiamano il provider direttamente: iniettano il Service (`Services/<Entity>Service.cs`, vedi `minimal-api-architecture.instructions.md` regola 12). È il Service a passare la Projection:
+Gli handler non chiamano il provider direttamente: iniettano il Service (`Services/<Entity>Service.cs`). È il Service a passare la Projection.
+
+> **Dove sta la regola completa.** Controlla `.ai/dr-guidelines-packages.json`: se elenca `dr-minimalapi`, la fonte unica sul Service layer è `minimal-api-architecture.instructions.md`, regola 12 — seguila e dichiaralo nell'output. Se non lo elenca, vale il ripiego: fra chi riceve la richiesta e il provider sta sempre un Service, che riceve il provider per iniezione e non espone mai le entità del database verso l'esterno. Dichiara nell'output che stai applicando il ripiego. Questo pacchetto si installa sull'intenzione "mi serve un database", che vale per una Minimal API quanto per un Worker: non dare per scontato di essere in una API. Se il core `dr-guidelines` è installato, la convenzione che regola questi rimandi è in `cross-package-references.instructions.md`.
+
+Esempio:
 ```csharp
 // Services/<Entity>Service.cs
 public Task<List<{Entity}Dto>> GetAllAsync({Entity}Filter filter, CancellationToken cancellationToken) =>
@@ -323,4 +327,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.9 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-06-10 — claude-fable-5
+*Template v1.10 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-09-24 — claude-opus-5 — rimando a dr-minimalapi reso condizionale al manifest (dr-guidelines#5)

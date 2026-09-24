@@ -17,7 +17,7 @@ Pacchetto di linee guida EF Core per backend .NET: provider database su SQL Serv
 - Dominio del catalogo: nessuno lo elenca. Il dominio `dotnet-backend` elenca solo `dr-dotnet-backend`.
 - Tipologie di progetto che lo suggeriscono: `minimal-api` e `worker-service`, come pacchetto opzionale (`optionalPackages`). Nessuna tipologia lo ha in `suggestedPackages`.
 - Server MCP suggerito: `db-schema` (`mcpSuggestion` del catalogo). Se tra i pacchetti scelti c'è `dr-efdb`, lo scaffolding (`/dr-scaffold-solution`, `/dr-scaffold-guidelines`) propone di registrarlo in `.mcp.json`. Senza quel server lo scaffolding CRUD chiede a mano i campi dell'entità.
-- Rimandi ad altri pacchetti: `database-provider.instructions.md` cita `minimal-api-architecture.instructions.md` (regola 12, Service layer) di `dr-minimalapi` e `code-organization.instructions.md` (Regola 6) del core. `dr-minimalapi` non è una dipendenza dichiarata: senza quel pacchetto il file citato non c'è nel progetto host.
+- Rimandi ad altri pacchetti: `database-provider.instructions.md` cita `minimal-api-architecture.instructions.md` (regola 12, Service layer) di `dr-minimalapi` e `code-organization.instructions.md` (Regola 6) del core. `dr-minimalapi` **non** è una dipendenza dichiarata, ed è voluto: questo pacchetto si installa sull'intenzione "mi serve un database", che vale anche per un Worker. Il rimando è quindi condizionale al manifest e ha un ripiego per quando `dr-minimalapi` non c'è, come prescrive `cross-package-references.instructions.md` del core.
 
 ## 🚀 Come si installa
 
@@ -83,4 +83,4 @@ Dal progetto host usa `/dr-segnala-miglioria <descrizione>` (su Copilot il promp
 
 ---
 
-*Documento aggiornato: Settembre 2026 — Revisione v1.0 — 2026-09-16 — claude-opus-5*
+*Documento aggiornato: Settembre 2026 — Revisione v1.1 — 2026-09-24 — claude-opus-5*
