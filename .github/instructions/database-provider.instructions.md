@@ -230,14 +230,78 @@ public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, C
 
 ---
 
-## 📖 Riferimento: Implementazione ModelKits
+## 📖 Esempio di riferimento: ModelKit
 
-**Invece di duplicare codice, CONSULTA l'implementazione di riferimento ModelKits** (progetto test-guideline):
-- `src/test-guideline.api/Infrastructure/ModelKits/` — DbContext, Provider CRUD completo, `Entities/ModelKit.cs`, `Filters/ModelKitFilter.cs` con `ToExpression()`
-- `src/test-guideline.api/Dto/ModelKitDto.cs` — record con `static Projection`
-- `src/test-guideline.api/Services/ModelKitService.cs` — Service che sceglie la Projection e mappa request→entity
+I pattern istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Il DbContext dell'esempio omette il logging di sviluppo del pattern 1️⃣ (`EnableSensitiveDataLogging`, `LogTo`): nel codice reale va mantenuto. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
 
-**Struttura identica da replicare** per nuovo provider.
+```csharp
+// Infrastructure/ModelKits/Entities/ModelKit.cs
+[Table("MODEL_KITS")]
+public class ModelKit
+{
+    [Column("ID")] public int Id { get; set; }
+    [Column("NAME")] public string Name { get; set; } = "";
+    [Column("SCALE")] public string Scale { get; set; } = "";
+    [Column("RELEASED_AT")] public DateTime ReleasedAt { get; set; }
+}
+
+// Infrastructure/ModelKits/ModelKitsDbContext.cs
+public class ModelKitsDbContext(
+    DbContextOptions<ModelKitsDbContext> options,
+    ILoggerFactory loggerFactory) : DbContext(options)
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        if (!optionsBuilder.IsConfigured && loggerFactory != null)
+        {
+            optionsBuilder.UseLoggerFactory(loggerFactory);
+        }
+    }
+
+    public virtual DbSet<ModelKit> ModelKit { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<ModelKit>(e => e.HasKey(k => k.Id));
+}
+
+// Infrastructure/ModelKits/Filters/ModelKitFilter.cs
+/// <summary>Optional filters for querying ModelKit. All fields nullable — none required.</summary>
+public class ModelKitFilter
+{
+    public int? Id { get; set; }
+    public string? Name { get; set; }
+    public DateTime? ReleasedAtFrom { get; set; }
+    public DateTime? ReleasedAtTo { get; set; }
+
+    /// <summary>Builds the EF-translatable WHERE expression from the populated fields.</summary>
+    public Expression<Func<ModelKit, bool>> ToExpression() =>
+        e => (Id == null || e.Id == Id)
+          && (Name == null || e.Name.Contains(Name))
+          && (ReleasedAtFrom == null || e.ReleasedAt >= ReleasedAtFrom)
+          && (ReleasedAtTo == null || e.ReleasedAt <= ReleasedAtTo);
+}
+
+// Dto/ModelKitDto.cs e Dto/ModelKitSummaryDto.cs
+public record ModelKitDto(int Id, string Name, string Scale, DateTime ReleasedAt)
+{
+    public static Expression<Func<ModelKit, ModelKitDto>> Projection =>
+        e => new(e.Id, e.Name, e.Scale, e.ReleasedAt);
+}
+
+public record ModelKitSummaryDto(int Id, string Name)
+{
+    public static Expression<Func<ModelKit, ModelKitSummaryDto>> Projection =>
+        e => new(e.Id, e.Name);
+}
+
+// Services/ModelKitService.cs — sceglie la Projection, non espone l'entità
+public class ModelKitService(ModelKitsProvider provider)
+{
+    /// <summary>Lists model kits matching the filter, as summary rows.</summary>
+    public Task<List<ModelKitSummaryDto>> GetSummariesAsync(ModelKitFilter filter, CancellationToken cancellationToken) =>
+        provider.GetModelKitAsync(filter, ModelKitSummaryDto.Projection, cancellationToken);
+}
+```
 
 ---
 
@@ -327,4 +391,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.10 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-09-24 — claude-opus-5 — rimando a dr-minimalapi reso condizionale al manifest (dr-guidelines#5)
+*Template v1.13 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1); nota sul logging del DbContext
