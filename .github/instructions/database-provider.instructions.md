@@ -232,7 +232,7 @@ public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, C
 
 ## 📖 Esempio di riferimento: ModelKit
 
-I pattern 1️⃣-8️⃣ istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Provider e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits`, senza variazioni.
+I pattern 1️⃣-8️⃣ istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
 
 ```csharp
 // Infrastructure/ModelKits/Entities/ModelKit.cs
@@ -243,6 +243,25 @@ public class ModelKit
     [Column("NAME")] public string Name { get; set; } = "";
     [Column("SCALE")] public string Scale { get; set; } = "";
     [Column("RELEASED_AT")] public DateTime ReleasedAt { get; set; }
+}
+
+// Infrastructure/ModelKits/ModelKitsDbContext.cs
+public class ModelKitsDbContext(
+    DbContextOptions<ModelKitsDbContext> options,
+    ILoggerFactory loggerFactory) : DbContext(options)
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        if (!optionsBuilder.IsConfigured && loggerFactory != null)
+        {
+            optionsBuilder.UseLoggerFactory(loggerFactory);
+        }
+    }
+
+    public virtual DbSet<ModelKit> ModelKit { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<ModelKit>(e => e.HasKey(k => k.Id));
 }
 
 // Infrastructure/ModelKits/Filters/ModelKitFilter.cs
@@ -372,4 +391,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.11 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline (dr-efdb#1)
+*Template v1.12 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1)
