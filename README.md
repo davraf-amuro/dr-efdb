@@ -17,7 +17,16 @@ Pacchetto di linee guida EF Core per backend .NET: provider database su SQL Serv
 - Dominio del catalogo: nessuno lo elenca. Il dominio `dotnet-backend` elenca solo `dr-dotnet-backend`.
 - Tipologie di progetto che lo suggeriscono: `minimal-api` e `worker-service`, come pacchetto opzionale (`optionalPackages`). Nessuna tipologia lo ha in `suggestedPackages`.
 - Server MCP suggerito: `db-schema` (`mcpSuggestion` del catalogo). Se tra i pacchetti scelti c'è `dr-efdb`, lo scaffolding (`/dr-scaffold-solution`, `/dr-scaffold-guidelines`) propone di registrarlo in `.mcp.json`. Senza quel server lo scaffolding CRUD chiede a mano i campi dell'entità.
-- Rimandi ad altri pacchetti: `database-provider.instructions.md` cita `minimal-api-architecture.instructions.md` (regola 12, Service layer) di `dr-minimalapi` e `code-organization.instructions.md` (Regola 6) del core. `dr-minimalapi` **non** è una dipendenza dichiarata, ed è voluto: questo pacchetto si installa sull'intenzione "mi serve un database", che vale anche per un Worker. Il rimando è quindi condizionale al manifest e ha un ripiego per quando `dr-minimalapi` non c'è, come prescrive `cross-package-references.instructions.md` del core.
+- `dr-minimalapi` **non** è una dipendenza dichiarata, ed è voluto: questo pacchetto si installa sull'intenzione "mi serve un database", che vale anche per un Worker. Il rimando è condizionale al manifest e ha un ripiego, come prescrive `cross-package-references.instructions.md` del core.
+
+File di altri pacchetti citati dalle istruzioni:
+
+| File citato | Chi lo cita | Pacchetto che lo porta |
+|-------------|-------------|------------------------|
+| `code-organization` (Regola 6, commenti), `cross-package-references.instructions.md` | `database-provider` | `dr-guidelines` (core) |
+| `minimal-api-architecture.instructions.md` (regola 12, Service layer) | `database-provider`, rimando condizionale | `dr-minimalapi` |
+
+Pacchetti suggeriti (`suggests` del catalogo): `dr-minimalapi`. L'installer non li installa e non chiede nulla: a fine installazione stampa una riga `[sugg]` con il motivo per ognuno che manca dal manifest.
 
 ## 🚀 Come si installa
 
@@ -50,9 +59,9 @@ Nota: la forma breve `irm https://raw.githubusercontent.com/... | iex` è un'alt
 | `.github/instructions/database-startup-resilience.instructions.md` | Copia dell'istruzione sull'avvio resiliente |
 | `.ai/dr-guidelines-packages.json` | Voce `dr-efdb` in `installed`: `package`, `installedAt` (data) e `commit` (commit di `main` installato). Il file si crea se manca. |
 
-Nessuna modifica a `CLAUDE.md` né ai file di configurazione del core (`.editorconfig`, `.gitignore`, `.gitattributes`, `.claude/settings.json`, `.mcp.json`).
+Il pacchetto non modifica `CLAUDE.md` né i file di configurazione (`.editorconfig`, `.gitignore`, `.gitattributes`, `.claude/settings.json`, `.mcp.json`). Li scrive il core, solo se viene installato insieme perché mancava dal manifest.
 
-`LICENSE`, `.github/ISSUE_TEMPLATE/` e `dr-efdb-install.ps1` restano in questo repo: non vengono copiati.
+Non vengono copiati `README.md`, `LICENSE`, `.github/ISSUE_TEMPLATE/` e l'installer `dr-efdb-install.ps1`.
 
 Senza `-Update` un file già presente nel progetto host viene saltato (`[SKIP]`).
 
@@ -74,13 +83,13 @@ Un file rimosso da questo repo resta nel progetto host: l'installer copia, non c
 
 Non correggere la copia nel progetto host: si perde al primo `-Update`.
 
-Dal progetto host usa `/dr-segnala-miglioria <descrizione>` (su Copilot il prompt `.github/prompts/dr-segnala-miglioria.prompt.md` del core). Apre la issue in questo repo.
+Dal progetto host usa `/dr-file-feedback <descrizione>` (su Copilot il prompt `.github/prompts/dr-file-feedback.prompt.md` del core). La issue si apre in questo repo, dopo la tua conferma esplicita di titolo e corpo.
 
-| Modello | Quando |
-|---------|--------|
-| `.github/ISSUE_TEMPLATE/miglioria.md` | Richiesta evolutiva |
-| `.github/ISSUE_TEMPLATE/problema.md` | Malfunzionamento |
+| Modello del repo | Quando usarlo |
+|------------------|---------------|
+| `.github/ISSUE_TEMPLATE/miglioria.md` | Richiesta evolutiva: regola nuova, precisazione, estensione del pacchetto |
+| `.github/ISSUE_TEMPLATE/problema.md` | Malfunzionamento: regola sbagliata, ambigua o che porta l'agente fuori strada |
 
 ---
 
-*Documento aggiornato: Ottobre 2026 — Revisione v1.4 — 2026-10-11 — claude-opus-5-5*
+*Revisione v1.5 — 2026-10-11 21:00 — claude-opus-5-5*
