@@ -11,7 +11,7 @@ Pacchetto di linee guida EF Core per backend .NET: provider database su SQL Serv
 
 ## 🔗 Dipendenze e domini
 
-- Dipende da: nessuna dipendenza.
+- Dipende da: nessuna dipendenza dichiarata. Il core `dr-guidelines` arriva comunque per primo se manca dal manifest: è una dipendenza implicita di ogni pacchetto.
 - Richiesto da: nessuno. Nessun pacchetto del catalogo dichiara `dr-efdb` tra le sue dipendenze.
 - Applicabilità nel catalogo: `appliesTo: dotnet`.
 - Dominio del catalogo: nessuno lo elenca. Il dominio `dotnet-backend` elenca solo `dr-dotnet-backend`.
@@ -83,4 +83,4 @@ Dal progetto host usa `/dr-segnala-miglioria <descrizione>` (su Copilot il promp
 
 ---
 
-*Documento aggiornato: Ottobre 2026 — Revisione v1.3 — 2026-10-11 — claude-opus-5-5*
+*Documento aggiornato: Ottobre 2026 — Revisione v1.4 — 2026-10-11 — claude-opus-5-5*

@@ -232,7 +232,7 @@ public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, C
 
 ## 📖 Esempio di riferimento: ModelKit
 
-I pattern 1️⃣-8️⃣ istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
+I pattern istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Il DbContext mostra solo ciò che cambia rispetto a 1️⃣: il logging di sviluppo (`EnableSensitiveDataLogging`, `LogTo`) resta quello del pattern. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
 
 ```csharp
 // Infrastructure/ModelKits/Entities/ModelKit.cs
@@ -391,4 +391,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.12 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1)
+*Template v1.13 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1)
