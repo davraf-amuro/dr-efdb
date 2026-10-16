@@ -16,7 +16,7 @@ Pacchetto di linee guida EF Core per backend .NET: provider database su SQL Serv
 - Applicabilità nel catalogo: `appliesTo: dotnet`.
 - Dominio del catalogo: nessuno lo elenca. Il dominio `dotnet-backend` elenca solo `dr-dotnet-backend`.
 - Tipologie di progetto che lo suggeriscono: `minimal-api` e `worker-service`, come pacchetto opzionale (`optionalPackages`). Nessuna tipologia lo ha in `suggestedPackages`.
-- Server MCP suggerito: `db-schema` (`mcpSuggestion` del catalogo). Se tra i pacchetti scelti c'è `dr-efdb`, lo scaffolding (`/dr-scaffold-solution`, `/dr-scaffold-guidelines`) propone di registrarlo in `.mcp.json`. Senza quel server lo scaffolding CRUD chiede a mano i campi dell'entità.
+- Server MCP suggerito: `db-schema` (`mcpSuggestion` del catalogo), pubblicato in [davraf-amuro/dr-mcp-dbschema](https://github.com/davraf-amuro/dr-mcp-dbschema) per SQL Server. Se tra i pacchetti scelti c'è `dr-efdb`, lo scaffolding (`/dr-scaffold-solution`, `/dr-scaffold-guidelines`) propone di installarlo con il `setup.ps1` di quel repository, che lo registra in `.mcp.json` (o in `.vscode/mcp.json` per Copilot). Comandi e limiti: `mcp-server-discovery.instructions.md` del core, sezione "Server già disponibili nella suite". Senza quel server lo scaffolding CRUD chiede a mano i campi dell'entità.
 - `dr-minimalapi` **non** è una dipendenza dichiarata, ed è voluto: questo pacchetto si installa sull'intenzione "mi serve un database", che vale anche per un Worker. Il rimando è condizionale al manifest e ha un ripiego, come prescrive `cross-package-references.instructions.md` del core.
 
 File di altri pacchetti citati dalle istruzioni:
@@ -92,4 +92,4 @@ Dal progetto host usa `/dr-file-feedback <descrizione>` (su Copilot il prompt `.
 
 ---
 
-*Revisione v1.5 — 2026-10-11 21:00 — claude-opus-5-5*
+*Revisione v1.6 — 2026-10-16 18:29 — claude-opus-5-5*
