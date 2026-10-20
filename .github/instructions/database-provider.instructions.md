@@ -10,7 +10,7 @@ Genera provider EF Core per SQL Server seguendo i pattern del progetto D106.
 
 | Componente | Pattern | Note |
 |------------|---------|------|
-| **DbContext** | Primary constructor: `(DbContextOptions<T>, ILoggerFactory)` | NoTracking, SensitiveDataLogging |
+| **DbContext** | Primary constructor: `(DbContextOptions<T>, ILoggerFactory)` | NoTracking; `EnableSensitiveDataLogging` solo in Development |
 | **Provider** | Primary constructor: `(TDbContext, ILogger<T>)` | Metodi async con `CancellationToken` |
 | **Entity** | `[Table]` + `[Column]` su ogni proprietà | Fluent API per chiavi |
 | **Filter** | Props tutte nullable + `ToExpression()` | Pattern: `{X}` (string→Contains, numerici→uguaglianza), `{X}From`/`{X}To` (DateTime) |
@@ -25,12 +25,12 @@ Genera provider EF Core per SQL Server seguendo i pattern del progetto D106.
    ```
    ⚠️ Creerò {NOME_PROVIDER}Provider con:
    - N file in Infrastructure\{NOME_PROVIDER}\
-   - Modifiche a Program.cs, appsettings.Development.json
+   - Modifiche a Program.cs, appsettings.local.json
    
-   Confermi? (Rollback Git disponibile)
+   Confermi?
    ```
 3. **Attendi conferma esplicita** prima di procedere
-4. **Dopo conferma**: crea branch Git locale e commit iniziale (NO push)
+4. **Dopo conferma**: branch e commit seguono il ciclo del core (`plan-tracking.instructions.md`, sezione "Branch di esecuzione"): il branch lo sceglie l'utente nel campo `Branch:` del piano, mai creato in autonomia. NO push automatico
 
 ---
 
@@ -65,9 +65,8 @@ public class {PROVIDER}DbContext(
     {
         if (!optionsBuilder.IsConfigured && loggerFactory != null)
         {
+            // il logging passa da ILoggerFactory (Serilog): niente LogTo(Console.WriteLine)
             optionsBuilder.UseLoggerFactory(loggerFactory);
-            optionsBuilder.EnableSensitiveDataLogging();
-            optionsBuilder.LogTo(Console.WriteLine, LogLevel.Information);
         }
     }
     
@@ -79,6 +78,7 @@ public class {PROVIDER}DbContext(
     }
 }
 ```
+`EnableSensitiveDataLogging` (valori dei parametri nei log SQL) non sta nel DbContext: si abilita solo in Development, nella DI Extension (pattern 6️⃣).
 
 ### 2️⃣ Provider con Expression Selector
 ```csharp
@@ -92,7 +92,8 @@ public class {PROVIDER}Provider(
         Expression<Func<{Entity}, TResult>> selector,
         CancellationToken cancellationToken)
     {
-        logger.LogInformation("Querying {Entity} with filter {@Filter}", filter);
+        // il filtro non si logga per intero: può contenere dati sensibili (niente {@Filter})
+        logger.LogInformation("Querying {Entity} rows");
 
         // Leggo da DB: WHERE con i soli filtri valorizzati, SELECT con le sole colonne del DTO
         return await context.{Entity}.AsNoTracking()
@@ -175,14 +176,19 @@ public static class {PROVIDER}ProviderExtensions
 {
     public static IServiceCollection Add{PROVIDER}Provider(
         this IServiceCollection services, 
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         services.AddDbContext<{PROVIDER}DbContext>(options =>
         {
             options.UseSqlServer(configuration.GetConnectionString("{PROVIDER}Db"));
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-            options.EnableSensitiveDataLogging();
-            options.EnableDetailedErrors(true);
+            // valori dei parametri e dettagli degli errori: solo in Development, mai in produzione
+            if (environment.IsDevelopment())
+            {
+                options.EnableSensitiveDataLogging();
+                options.EnableDetailedErrors();
+            }
         });
         
         services.AddScoped<{PROVIDER}Provider>();
@@ -194,7 +200,7 @@ public static class {PROVIDER}ProviderExtensions
 ### 7️⃣ Registrazione Program.cs
 ```csharp
 using {ROOT_NAMESPACE}.Infrastructure.{PROVIDER};
-builder.Services.Add{PROVIDER}Provider(builder.Configuration);
+builder.Services.Add{PROVIDER}Provider(builder.Configuration, builder.Environment);
 ```
 
 ### 8️⃣ Uso negli Endpoint (tramite Service)
@@ -221,18 +227,18 @@ public Task<List<{Entity}SummaryDto>> GetSummariesAsync({Entity}Filter filter, C
 | **Primary Constructor** | Sempre per DbContext e Provider |
 | **CancellationToken** | Ultimo parametro in TUTTI i metodi che materializzano (ToListAsync, etc) |
 | **AsNoTracking()** | Default dal DbContext; letture no-tracking, `AsTracking()` esplicito su Update/Delete |
-| **Logging** | `logger.LogInformation` strutturato con i valori del filtro |
+| **Logging** | `logger.LogInformation` strutturato con placeholder e argomenti coerenti; mai il filtro intero né `{@Filter}` (può contenere dati sensibili); `EnableSensitiveDataLogging` solo in Development |
 | **Column Attribute** | Su OGNI proprietà Entity |
 | **Filter per Entity** | Ogni Entity DEVE avere il suo Filter con `ToExpression()` (anche vuoto) |
 | **DTO per Entity** | Almeno `{Entity}Dto` completo + `{Entity}SummaryDto` ridotto, ognuno con `static Projection` |
 | **Commenti** | `///` su ogni metodo provider/service + inline su operazioni DB (code-organization Regola 6) |
-| **Git Commit** | Solo locale, NO push automatico |
+| **Git** | Branch e commit secondo il ciclo del core (piano, campo `Branch:`); NO push automatico |
 
 ---
 
 ## 📖 Esempio di riferimento: ModelKit
 
-I pattern istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Il DbContext dell'esempio omette il logging di sviluppo del pattern 1️⃣ (`EnableSensitiveDataLogging`, `LogTo`): nel codice reale va mantenuto. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
+I pattern istanziati su un'entità reale: è l'esempio da replicare per un nuovo provider. Il DbContext dell'esempio coincide col pattern 1️⃣; `EnableSensitiveDataLogging` sta nella DI Extension, solo in Development. Provider (`ModelKitsProvider`, metodo `GetModelKitAsync<TResult>`) e DI Extension seguono 2️⃣ e 6️⃣ con `{PROVIDER}` = `ModelKits` e `{Entity}` = `ModelKit`, senza variazioni.
 
 ```csharp
 // Infrastructure/ModelKits/Entities/ModelKit.cs
@@ -305,25 +311,11 @@ public class ModelKitService(ModelKitsProvider provider)
 
 ---
 
-## 🔐 Git Workflow (Solo Locale)
+## 🔐 Git
 
-**⚠️ NO push automatico sul remote**
+**⚠️ NO push automatico sul remote.** Branch, commit e rollback seguono il ciclo del core `dr-guidelines`: piano su disco e branch di esecuzione scelto dall'utente nel campo `Branch:` (`plan-tracking.instructions.md`, sezione "Branch di esecuzione"). L'agente non crea branch né commit di sua iniziativa e non propone `git reset --hard`: per annullare una modifica indica `git restore <file>` (file singolo) o lascia decidere all'utente.
 
-```bash
-# Setup iniziale
-git checkout -b feature/add-{provider}-provider
-git add .
-git commit -m "feat: add {provider} provider infrastructure"
-
-# Rollback se necessario
-git status                    # Vedi modifiche
-git restore <file>            # Ripristina file singolo (git v2.23+)
-git reset --hard HEAD         # Annulla TUTTE le modifiche non committate
-git log --oneline             # Storia commit
-git reset --hard <hash>       # Torna a commit specifico
-```
-
-**L'utente decide autonomamente quando/se fare `git push`**
+**L'utente decide quando e se fare `git push`**
 
 ---
 
@@ -336,7 +328,16 @@ git reset --hard <hash>       # Torna a commit specifico
   }
 }
 ```
-**Dev**: `appsettings.Development.json` | **Prod**: User Secrets/Azure Key Vault
+**Dev**: `appsettings.local.json` (non committato, caricato in `Program.cs` con `AddJsonFile("appsettings.local.json", optional: true)`) | **Prod**: User Secrets/Azure Key Vault. In `appsettings.json` solo valori fake. Regola completa: `sensitive-data.instructions.md` del core `dr-guidelines`.
+
+---
+
+## 🗄️ Server MCP `db-schema` (se presente)
+
+Se la struttura della tabella non è nota, prima di chiederla all'utente verifica se è disponibile il server MCP `db-schema` (suite `dr-*`, SQL Server): i suoi tool sono esposti nella sessione, oppure è registrato in `.mcp.json`, `.vscode/mcp.json` o nei settings (ricerca completa: `mcp-server-discovery.instructions.md` del core `dr-guidelines`, se installato).
+
+- **Presente**: usa i suoi tool per selezionare la connessione, elencare tabelle/viste e leggere colonne, tipi e nullabilità; da questi ricava `[Table]`/`[Column]`, i campi del Filter e i DTO. Una query di lettura è possibile solo se abilitata nella configurazione del server; le operazioni DDL sono disattivate di default. Dichiara nell'output che la struttura viene dal server.
+- **Assente**: se il core è installato, la sua regola propone l'installazione con `setup.ps1` di `davraf-amuro/dr-mcp-dbschema` (solo `win-x64`, SQL Server raggiungibile in rete) e si procede solo dopo conferma dell'utente. Ripiego: chiedi all'utente nome tabella, colonne, tipi e nullabilità e dichiara che la struttura è fornita a mano.
 
 ---
 
@@ -347,11 +348,11 @@ git reset --hard <hash>       # Torna a commit specifico
 - [ ] Provider GET: `Where(filter.ToExpression()).Select(selector)` — nessun `if` di composizione query
 - [ ] Provider: metodo `Get{Entity}Async<TResult>` con `CancellationToken`; Update/Delete con `AsTracking()`
 - [ ] `[Column]` attributo su OGNI proprietà Entity
-- [ ] Logging strutturato del filtro
+- [ ] Logging strutturato, senza destrutturare il filtro; `EnableSensitiveDataLogging` solo sotto `IsDevelopment()`
 - [ ] `///` su ogni metodo + commento inline su ogni operazione DB
 - [ ] DI Extension creato: `Add{PROVIDER}Provider`
 - [ ] Registrato in `Program.cs` con using; Service registrato accanto al provider
-- [ ] Connection string in `appsettings.Development.json`
+- [ ] Connection string in `appsettings.local.json` (ignorato da git), mai in file committati
 - [ ] Handler usano il Service; il Service passa `{Entity}Dto.Projection` al provider
 
 ---
@@ -391,4 +392,4 @@ var context = new TDbContext(options, NullLoggerFactory.Instance);
 
 ---
 
-*Template v1.13 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-11 — claude-opus-5-5 — rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1); nota sul logging del DbContext
+*Template v1.14 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-20 — claude-opus-5-5 — audit suite: logging sensibile solo in Development (DI Extension), niente `LogTo(Console.WriteLine)` né `{@Filter}`, connection string in `appsettings.local.json`, branch/commit dal ciclo del core, sezione server MCP `db-schema`. v1.13 (2026-10-11): rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1); nota sul logging del DbContext

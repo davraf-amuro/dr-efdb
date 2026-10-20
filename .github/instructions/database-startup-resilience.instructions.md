@@ -30,7 +30,7 @@ in stato degradato, espone lo stato al frontend e permette il retry senza riavvi
 
 | Componente | Tipo | Responsabilità |
 |------------|------|----------------|
-| `DatabaseStartupService` | singleton | Stato DB (`IsDatabaseReady`, `LastError`, `LastCheckedUtc`), `TryInitializeAsync` (connessione+seed, no-throw), `CheckConnectionAsync` (probe live) |
+| `DatabaseStartupService` | singleton | Stato DB (`IsDatabaseReady`, `LastErrorCode`, `LastCheckedUtc`), `TryInitializeAsync` (connessione+seed, no-throw), `CheckConnectionAsync` (probe live) |
 | `HealthMapping` | endpoint | `GET status` (live, 200), `POST status/retry-database` (200/503), entrambi `AllowAnonymous` |
 | `DatabaseExceptionHandler` | `IExceptionHandler` | Intercetta errori SQL a runtime → 503 `ProblemDetails` |
 
@@ -38,7 +38,7 @@ in stato degradato, espone lo stato al frontend e permette il retry senza riavvi
 
 | Endpoint | Metodo | Auth | Esito |
 |----------|--------|------|-------|
-| `api/v{version}/status` | GET | Anonimo | 200 `{ databaseReady, lastError, lastCheckedUtc }` |
+| `api/v{version}/status` | GET | Anonimo | 200 `{ databaseReady, lastErrorCode, lastCheckedUtc }` |
 | `api/v{version}/status/retry-database` | POST | Anonimo | 200 se DB pronto + seed ok; 503 `ProblemDetails` se ancora down |
 
 ## Pattern richiesti (copiabili)
@@ -53,7 +53,8 @@ public class DatabaseStartupService(
     ILogger<DatabaseStartupService> logger)
 {
     public bool IsDatabaseReady { get; private set; }
-    public string? LastError { get; private set; }
+    /// <summary>Codice generico dello stato (mai ex.Message): il dettaglio sta solo nel log.</summary>
+    public string? LastErrorCode { get; private set; }
     public DateTimeOffset? LastCheckedUtc { get; private set; }
 
     /// <summary>Verifica connessione e, se ok, esegue il seed. Non rilancia mai.</summary>
@@ -66,7 +67,7 @@ public class DatabaseStartupService(
             if (!await db.Database.CanConnectAsync(ct))
             {
                 IsDatabaseReady = false;
-                LastError = "Il database non è raggiungibile.";
+                LastErrorCode = "DB_UNREACHABLE";
                 logger.LogWarning("Database non raggiungibile durante l'inizializzazione");
                 return false;
             }
@@ -77,13 +78,13 @@ public class DatabaseStartupService(
             await seeder.SeedAsync(ct);
 
             IsDatabaseReady = true;
-            LastError = null;
+            LastErrorCode = null;
             return true;
         }
         catch (Exception ex)
         {
             IsDatabaseReady = false;
-            LastError = ex.Message;
+            LastErrorCode = "DB_INIT_FAILED";   // l'eccezione resta nel log, non nello stato esposto
             logger.LogError(ex, "Errore durante l'inizializzazione del database");
             return false;
         }
@@ -99,7 +100,7 @@ public class DatabaseStartupService(
             if (!await db.Database.CanConnectAsync(ct))
             {
                 IsDatabaseReady = false;
-                LastError = "Il database non è raggiungibile.";
+                LastErrorCode = "DB_UNREACHABLE";
                 return false;
             }
 
@@ -107,13 +108,13 @@ public class DatabaseStartupService(
             // file dati illeggibile (SQL error 823) deve risultare non pronto
             await db.Roles.AsNoTracking().AnyAsync(ct);
             IsDatabaseReady = true;
-            LastError = null;
+            LastErrorCode = null;
             return true;
         }
         catch (Exception ex)
         {
             IsDatabaseReady = false;
-            LastError = ex.Message;
+            LastErrorCode = "DB_CHECK_FAILED";   // l'eccezione resta nel log, non nello stato esposto
             logger.LogWarning(ex, "Verifica connessione database fallita");
             return false;
         }
@@ -135,7 +136,7 @@ public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilde
     group.MapGet("/", async (DatabaseStartupService db, CancellationToken ct) =>
     {
         await db.CheckConnectionAsync(ct);
-        return TypedResults.Ok(new DatabaseStatusResponse(db.IsDatabaseReady, db.LastError, db.LastCheckedUtc));
+        return TypedResults.Ok(new DatabaseStatusResponse(db.IsDatabaseReady, db.LastErrorCode, db.LastCheckedUtc));
     })
     .Produces<DatabaseStatusResponse>(StatusCodes.Status200OK)
     .WithName("GetStatus").WithSummary("Stato del database")
@@ -147,7 +148,7 @@ public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilde
             : Results.Problem(new ProblemDetails
             {
                 Title = "Base Dati non pronta",
-                Detail = db.LastError ?? "Il database non è al momento raggiungibile.",
+                Detail = "Il database non è al momento raggiungibile.",
                 Status = StatusCodes.Status503ServiceUnavailable
             }))
     .Produces<DatabaseStatusResponse>(StatusCodes.Status200OK)
@@ -158,7 +159,8 @@ public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilde
     return routes;
 }
 
-public record DatabaseStatusResponse(bool DatabaseReady, string? LastError, DateTimeOffset? LastCheckedUtc);
+/// <summary>Risposta anonima: solo stato e codice generico, mai il messaggio di un'eccezione (può rivelare server, schema, credenziali).</summary>
+public record DatabaseStatusResponse(bool DatabaseReady, string? LastErrorCode, DateTimeOffset? LastCheckedUtc);
 ```
 
 ### Handler errori runtime — DatabaseExceptionHandler
@@ -205,7 +207,7 @@ app.MapHealthEndpoints(versionSet);
 var dbStartup = app.Services.GetRequiredService<DatabaseStartupService>();
 if (!await dbStartup.TryInitializeAsync(CancellationToken.None))
 {
-    Log.Warning("Database non raggiungibile all'avvio: API in stato degradato. Stato su /api/v1/status, retry su /api/v1/status/retry-database");
+    app.Logger.LogWarning("Database non raggiungibile all'avvio: API in stato degradato. Stato su /api/v1/status, retry su /api/v1/status/retry-database");
 }
 ```
 
@@ -213,6 +215,7 @@ if (!await dbStartup.TryInitializeAsync(CancellationToken.None))
 
 - NON eseguire seed/inizializzazione DB con codice che può rilanciare nel percorso di avvio
 - NON proteggere con auth gli endpoint status/retry (l'auth dipende dal DB)
+- NON esporre `ex.Message` o stack in endpoint anonimi: stato e codice generico nella risposta, eccezione solo nel log
 - NON aprire connessioni manuali per il probe: usa `CanConnectAsync`
 - NON duplicare la logica di stato: un solo singleton è la fonte di verità
 
@@ -230,10 +233,10 @@ if (!await dbStartup.TryInitializeAsync(CancellationToken.None))
 
 - [ ] `DatabaseStartupService` singleton, `TryInitializeAsync` non rilancia mai
 - [ ] Seed scoped risolto via `IServiceScopeFactory`
-- [ ] `GET status` sempre 200 con `{ databaseReady, lastError, lastCheckedUtc }`
+- [ ] `GET status` sempre 200 con `{ databaseReady, lastErrorCode, lastCheckedUtc }`, mai il testo di un'eccezione
 - [ ] `POST status/retry-database` 200/503 `ProblemDetails`
 - [ ] Endpoint status/retry `AllowAnonymous`
 - [ ] `DatabaseExceptionHandler` registrato + `UseExceptionHandler()` attivo
 - [ ] Avvio con DB down: app parte, log `Warning` strutturato presente
 
-*Template v1.1 - Database Startup Resilience - 2026-06-30 — claude-opus-4-8*
+*Template v1.2 - Database Startup Resilience - 2026-10-20 — claude-opus-5-5 — audit suite: `LastError` (ex.Message) sostituito da `LastErrorCode` generico negli endpoint anonimi, `Log.Warning` statico sostituito da `ILogger` (`app.Logger`). v1.1 (2026-06-30): claude-opus-4-8*
