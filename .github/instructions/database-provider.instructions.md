@@ -388,8 +388,8 @@ var options = new DbContextOptionsBuilder<TDbContext>()
     .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 var context = new TDbContext(options, NullLoggerFactory.Instance);
 ```
-**NuGet**: `Microsoft.EntityFrameworkCore.InMemory` v10.0
+**NuGet**: `Microsoft.EntityFrameworkCore.InMemory` versione allineata al runtime (11.x)
 
 ---
 
-*Template v1.14 - .NET 10 - Token-optimized for AI agents* - Last Update 2026-10-20 — claude-opus-5-5 — audit suite: logging sensibile solo in Development (DI Extension), niente `LogTo(Console.WriteLine)` né `{@Filter}`, connection string in `appsettings.local.json`, branch/commit dal ciclo del core, sezione server MCP `db-schema`. v1.13 (2026-10-11): rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1); nota sul logging del DbContext
+*Template v1.15 - .NET 11 - Token-optimized for AI agents* - Last Update 2026-11-27 — claude-sonnet-5-5 — .NET 11 come versione consigliata (davraf-amuro/dr-guidelines#37). v1.14 (2026-10-20, claude-opus-5-5): audit suite: logging sensibile solo in Development (DI Extension), niente `LogTo(Console.WriteLine)` né `{@Filter}`, connection string in `appsettings.local.json`, branch/commit dal ciclo del core, sezione server MCP `db-schema`. v1.13 (2026-10-11): rimando a un'implementazione di riferimento inesistente sostituito da un esempio ModelKit inline, DbContext compreso (dr-efdb#1); nota sul logging del DbContext
